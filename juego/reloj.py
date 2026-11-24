@@ -1,6 +1,7 @@
 """Acertijo gestual del reloj para ENIGMA: Ecos del Olvido."""
 
 import math
+import time
 from pathlib import Path
 
 import pygame
@@ -62,9 +63,19 @@ class RelojInteractivo:
         self._gesto_anterior = "SIN MANO"
         self._comprobacion_realizada = False
         self._ultimo_frame_camara = None
+        self._reiniciar_control()
 
         self.fuente = pygame.font.SysFont("georgia", 19)
         self.fuente_pequena = pygame.font.SysFont("georgia", 15)
+
+    def _reiniciar_control(self):
+        self._indice_filtrado = None
+        self._candidata = None
+        self._desde_candidata = 0.0
+        self._desde_abierta = None
+        self._desde_indice = None
+        self._historial = []
+        self._confirmada = False
 
     def _cargar(self, relativo):
         ruta = ASSETS / relativo
@@ -90,6 +101,7 @@ class RelojInteractivo:
         self.seleccionada = None
         self.cursor_indice = None
         self._gesto_anterior = "SIN MANO"
+        self._reiniciar_control()
 
     @staticmethod
     def _normalizar_angulo(angulo):
@@ -100,7 +112,7 @@ class RelojInteractivo:
         dx = punto[0] - centro[0]
         dy = centro[1] - punto[1]
         # 0 grados = 12; aumenta en sentido horario.
-        return (math.degrees(math.atan2(dx, -dy)) + 360.0) % 360.0
+        return (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
 
     @staticmethod
     def _distancia_punto_segmento(punto, inicio, fin):
@@ -128,33 +140,60 @@ class RelojInteractivo:
         )
 
     def _seleccionar_cercana(self, punto):
+        ahora = time.monotonic()
+        if math.dist(punto, self.centro) < 30:
+            self._candidata = None
+            return False
         opciones = []
         for nombre in ("hora", "minuto"):
-            distancia = self._distancia_punto_segmento(
-                punto, self.centro, self._punta(nombre)
-            )
             punta = self._punta(nombre)
-            distancia_punta = math.hypot(punto[0] - punta[0], punto[1] - punta[1])
-            opciones.append((distancia, distancia_punta, nombre))
+            distancia = self._distancia_punto_segmento(punto, self.centro, punta)
+            opciones.append((distancia, math.dist(punto, punta), nombre))
         distancia, _, nombre = min(opciones)
-        if distancia <= 34:
-            self.seleccionada = nombre
-            self.mensaje = (
-                "Moviendo manecilla de minutos." if nombre == "minuto"
-                else "Moviendo manecilla de horas."
-            )
-            return True
-        self.mensaje = "Acerca el índice a una de las manecillas para seleccionarla."
-        return False
+        if distancia > 46:
+            self._candidata = None
+            return False
+        if self._candidata != nombre:
+            self._candidata = nombre
+            self._desde_candidata = ahora
+            return False
+        if ahora - self._desde_candidata < 0.18:
+            return False
+        self.seleccionada = nombre
+        self._historial = []
+        self.mensaje = "Manecilla seleccionada. Mueve el índice; cierra el puño para soltar."
+        return True
 
     def _mover_a(self, punto):
+        if self.seleccionada is None or math.dist(punto, self.centro) < 45:
+            return
+        objetivo = self._angulo_desde_punto(self.centro, punto)
+        atributo = "angulo_" + self.seleccionada
+        actual = getattr(self, atributo)
+        delta = (objetivo - actual + 180) % 360 - 180
+        if abs(delta) < 1.5:
+            return
+        nuevo = (actual + max(-7, min(7, delta * 0.28))) % 360
+        setattr(self, atributo, nuevo)
+        ahora = time.monotonic()
+        self._historial.append((ahora, nuevo))
+        self._historial = [(t, a) for t, a in self._historial if ahora - t < 0.35]
+
+    def _soltar(self):
         if self.seleccionada is None:
             return
-        angulo = self._angulo_desde_punto(self.centro, punto)
-        if self.seleccionada == "hora":
-            self.angulo_hora = angulo
-        else:
-            self.angulo_minuto = angulo
+        atributo = "angulo_" + self.seleccionada
+        angulo = getattr(self, atributo)
+        # Recuperar una posición anterior al cierre involuntario del dedo.
+        ahora = time.monotonic()
+        anteriores = [a for t, a in self._historial if ahora - t >= 0.12]
+        if anteriores:
+            angulo = anteriores[-1]
+        paso = 6.0 if self.seleccionada == "minuto" else 2.5
+        setattr(self, atributo, (round(angulo / paso) * paso) % 360)
+        self.seleccionada = None
+        self._historial = []
+        self._candidata = None
 
     def _posicion_indice_pantalla(self, normalizada):
         """Mapea el área completa de la webcam al área útil del reloj."""
@@ -168,33 +207,43 @@ class RelojInteractivo:
     def _procesar_gesto(self, datos):
         gesto = datos["gesto"]
         self.gesto_actual = gesto
+        ahora = time.monotonic()
+        if self.resuelto:
+            return
         indice = datos.get("indice")
-        if indice is not None:
-            self.cursor_indice = self._posicion_indice_pantalla(indice)
+        if gesto == "INDICE LEVANTADO" and indice is not None:
+            self._desde_abierta = None
+            self._confirmada = False
+            punto = self._posicion_indice_pantalla(indice)
+            if self._gesto_anterior != gesto or self._indice_filtrado is None:
+                self._indice_filtrado = punto
+                self._desde_indice = ahora
+            else:
+                self._indice_filtrado = tuple(a + 0.25 * (b-a) for a,b in zip(self._indice_filtrado, punto))
+            self.cursor_indice = self._indice_filtrado
+            if ahora - self._desde_indice >= 0.12:
+                if self.seleccionada is None:
+                    self._seleccionar_cercana(self.cursor_indice)
+                else:
+                    self._mover_a(self.cursor_indice)
         else:
             self.cursor_indice = None
-
-        if self.resuelto:
-            self._gesto_anterior = gesto
-            return
-
-        if gesto == "INDICE LEVANTADO" and self.cursor_indice is not None:
-            if self.seleccionada is None:
-                self._seleccionar_cercana(self.cursor_indice)
+            self._indice_filtrado = None
+            self._candidata = None
+            if gesto == "PUNO CERRADO":
+                if self.seleccionada is not None:
+                    self._soltar()
+                    self.mensaje = "Manecilla liberada. Selecciona la otra cuando quieras."
+            if gesto == "MANO ABIERTA":
+                if self._desde_abierta is None:
+                    self._desde_abierta = ahora
+                if not self._confirmada and ahora - self._desde_abierta >= 1.0:
+                    self._soltar()
+                    self._confirmada = True
+                    self.comprobar_hora()
             else:
-                self._mover_a(self.cursor_indice)
-
-        elif gesto == "PUNO CERRADO":
-            if self.seleccionada is not None:
-                self.seleccionada = None
-                self.mensaje = "Manecilla liberada. Selecciona la otra cuando quieras."
-
-        elif gesto == "MANO ABIERTA":
-            # Comprobar solo al entrar en este gesto, no 60 veces por segundo.
-            if self._gesto_anterior != "MANO ABIERTA":
-                self.seleccionada = None
-                self.comprobar_hora()
-
+                self._desde_abierta = None
+                self._confirmada = False
         self._gesto_anterior = gesto
 
     def actualizar(self):
@@ -247,6 +296,10 @@ class RelojInteractivo:
                 self.angulo_hora
             )
 
+        if self.seleccionada and not self.resuelto:
+            punta = self._punta(self.seleccionada)
+            pygame.draw.circle(pantalla, (255, 210, 95), tuple(map(round, punta)), 13, 2)
+
         # Instrucciones discretas en la parte superior.
         panel = pygame.Surface((self.ancho - 370, 62), pygame.SRCALPHA)
         panel.fill((15, 8, 13, 205))
@@ -298,3 +351,4 @@ class RelojInteractivo:
         self.resuelto = False
         self.mensaje = "Levanta el índice y acércalo a una manecilla."
         self._gesto_anterior = "SIN MANO"
+        self._reiniciar_control()
