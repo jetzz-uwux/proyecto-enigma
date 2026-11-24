@@ -170,6 +170,13 @@ while ejecutando:
 
             if evento.button == 1:
 
+                if (acercamientos.actual == "reloj" and len(estado.manecillas_colocadas) == 2
+                        and estado.nota_obtenida and not estado.reloj_resuelto
+                        and reloj_ui.manejar_clic(evento.pos)):
+                    if reloj_ui.resuelto and estado.resolver_reloj():
+                        interfaz.cambiar_mensaje("El último secreto permanece detrás del TELÓN.")
+                    continue
+
                 if interfaz.rect_inventario.collidepoint(evento.pos):
                     mensaje = inventario.seleccionar(evento.pos)
                     if mensaje:
@@ -331,6 +338,7 @@ while ejecutando:
     if acercamientos.esta_abierto():
 
         if reloj_listo and not estado.reloj_resuelto:
+            reloj_ui.debug = acercamientos.debug
             reloj_ui.dibujar(pantalla)
             pantalla.blit(acercamientos.btn_regresar, acercamientos.rect_regresar)
         else:
@@ -383,7 +391,9 @@ while ejecutando:
         continue
 
     hallazgo = zona_investigable(posicion)
-    if hallazgo:
+    if reloj_listo and not estado.reloj_resuelto and reloj_ui.rect_confirmar.collidepoint(posicion):
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+    elif hallazgo:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
     elif (acercamientos.actual == "baul_abierto" and estado.palabra_validada and not estado.tarjeta_obtenida and acercamientos.rect_tarjeta.collidepoint(posicion)) or inventario.objeto_en(posicion) or (
         acercamientos.actual == "cajon" and any(
@@ -422,7 +432,7 @@ while ejecutando:
 
     else:
 
-        acercamientos.actualizar_cursor(
+            acercamientos.actualizar_cursor(
             posicion,
             habitacion.vista_actual
         )

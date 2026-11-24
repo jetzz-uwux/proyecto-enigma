@@ -26,6 +26,7 @@ class RelojInteractivo:
     """
 
     TOLERANCIA_GRADOS = 7.0
+    TOLERANCIA_HORA = 10.0
 
     def __init__(self, ancho, alto, lector=None):
         self.ancho = ancho
@@ -44,8 +45,8 @@ class RelojInteractivo:
             center=(ancho // 2, min(alto // 2 - 10, 320))
         )
         self.centro = (
-            self.rect_reloj.x + 280,
-            self.rect_reloj.y + 236,
+            self.rect_reloj.x + 279,
+            self.rect_reloj.y + 219,
         )
 
         # Centros de los remaches/pivotes, medidos en los PNG originales.
@@ -65,6 +66,8 @@ class RelojInteractivo:
         self._ultimo_frame_camara = None
         self._reiniciar_control()
 
+        self.rect_confirmar = pygame.Rect(ancho - 320, 280, 260, 54)
+        self.debug = False
         self.fuente = pygame.font.SysFont("georgia", 19)
         self.fuente_pequena = pygame.font.SysFont("georgia", 15)
 
@@ -89,7 +92,7 @@ class RelojInteractivo:
             return True
         self.camara_disponible = self.lector.iniciar()
         if self.camara_disponible:
-            self.mensaje = "Índice: selecciona y mueve. Puño: suelta. Mano abierta: comprueba."
+            self.mensaje = "Índice: selecciona y mueve. Puño: suelta. Pulsa Confirmar hora."
         else:
             self.mensaje = "No se pudo abrir la webcam. Cierra otras aplicaciones que la utilicen."
         return self.camara_disponible
@@ -234,16 +237,6 @@ class RelojInteractivo:
                 if self.seleccionada is not None:
                     self._soltar()
                     self.mensaje = "Manecilla liberada. Selecciona la otra cuando quieras."
-            if gesto == "MANO ABIERTA":
-                if self._desde_abierta is None:
-                    self._desde_abierta = ahora
-                if not self._confirmada and ahora - self._desde_abierta >= 1.0:
-                    self._soltar()
-                    self._confirmada = True
-                    self.comprobar_hora()
-            else:
-                self._desde_abierta = None
-                self._confirmada = False
         self._gesto_anterior = gesto
 
     def actualizar(self):
@@ -259,6 +252,16 @@ class RelojInteractivo:
         else:
             self._procesar_gesto(datos)
 
+    def manejar_clic(self, posicion):
+        if self.resuelto or not self.rect_confirmar.collidepoint(posicion):
+            return False
+        # Confirmar exactamente la posición visible, sin retroceder el ángulo.
+        self.seleccionada = None
+        self._reiniciar_control()
+        self._gesto_anterior = "SIN MANO"
+        self.comprobar_hora()
+        return True
+
     def comprobar_hora(self):
         """Comprueba los ángulos objetivo: 10:25."""
         objetivo_minuto = 150.0       # 25 minutos: 25 * 6 grados.
@@ -267,13 +270,13 @@ class RelojInteractivo:
         error_hora = abs((self.angulo_hora - objetivo_hora + 180) % 360 - 180)
 
         if (error_minuto <= self.TOLERANCIA_GRADOS and
-                error_hora <= self.TOLERANCIA_GRADOS):
+                error_hora <= self.TOLERANCIA_HORA):
             self.resuelto = True
             self.seleccionada = None
             self.mensaje = "El último secreto permanece detrás del TELÓN."
             return True
 
-        self.mensaje = "Esa no es la hora correcta. La nota indica las 10:25. Inténtalo de nuevo."
+        self.mensaje = "La hora no coincide con la nota. Inténtalo de nuevo."
         return False
 
     def dibujar(self, pantalla):
@@ -295,6 +298,21 @@ class RelojInteractivo:
                 pantalla, self.imagen_hora, self.pivote_hora,
                 self.angulo_hora
             )
+
+        if not self.resuelto:
+            rect = self.rect_confirmar
+            hover = rect.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(pantalla, (104, 39, 51) if hover else (65, 22, 35), rect, border_radius=9)
+            pygame.draw.rect(pantalla, (210, 165, 90), rect, 2, border_radius=9)
+            etiqueta = self.fuente.render("Confirmar hora", True, (245, 225, 190))
+            pantalla.blit(etiqueta, etiqueta.get_rect(center=rect.center))
+
+        if self.debug and not self.resuelto:
+            for i, texto_debug in enumerate((
+                f"Hora: {self.angulo_hora:.1f} grados (objetivo 312.5)",
+                f"Minutos: {self.angulo_minuto:.1f} grados (objetivo 150)",
+            )):
+                pantalla.blit(self.fuente_pequena.render(texto_debug, True, (245, 225, 190)), (self.ancho - 320, 350 + i * 22))
 
         if self.seleccionada and not self.resuelto:
             punta = self._punta(self.seleccionada)
