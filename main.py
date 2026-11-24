@@ -8,6 +8,8 @@ from juego.interfaz import Interfaz
 from juego.estado import EstadoJuego
 from juego.inventario import Inventario
 from juego.camara_ui import CamaraUI
+from juego.pistas import mensaje_pista
+from juego.ayuda_gestual import AyudaGestual
 
 pygame.init()
 
@@ -29,6 +31,7 @@ interfaz = Interfaz(ANCHO, ALTO)
 estado = EstadoJuego()
 lector = LectorArUco()
 camara_ui = CamaraUI()
+ayuda_gestual = AyudaGestual()
 camara_activa = False
 intento_camara = False
 frame = None
@@ -38,7 +41,7 @@ acercamientos.actualizar_zonas_cajon(estado)
 
 MENSAJES = {
     "cajon": "Parece que alguien dejó algunos objetos aquí.",
-    "reloj": "Un antiguo reloj. Quizás la hora tenga algún significado.",
+    "reloj": "Un antiguo reloj. Consulta la nota del inventario para descubrir la hora.",
     "baul_cerrado": "El baúl está cerrado. Necesito una llave.",
     "baul_abierto": "Solo el eco de la última función podrá revelar lo que aquí se esconde.",
     "escaner": "Necesito una tarjeta para autorizar el acceso.",
@@ -96,6 +99,9 @@ while ejecutando:
                     interfaz.cambiar_mensaje("La tarjeta ha sido revelada. Recógela.")
                 else:
                     interfaz.cambiar_mensaje("Primero resuelve el reloj.")
+
+            elif evento.key == pygame.K_F5 and acercamientos.debug:
+                interfaz.cambiar_mensaje(mensaje_pista(estado, habitacion.vista_actual))
 
             elif evento.key == pygame.K_F1:
 
@@ -256,6 +262,9 @@ while ejecutando:
         pygame.draw.rect(pantalla, (90, 75, 65), (450, 460, 380, 12))
         pygame.draw.rect(pantalla, (90, 220, 120), (450, 460, int(380*lector.progreso), 12))
     interfaz.dibujar(pantalla)
+    if not estado.juego_completado:
+        modo_ayuda = "reloj" if acercamientos.actual == "reloj" and not estado.reloj_resuelto else "puerta" if estado.acceso_autorizado and habitacion.vista_actual == "posterior" and not acercamientos.esta_abierto() else "exploracion"
+        ayuda_gestual.dibujar(pantalla, modo_ayuda)
     inventario.dibujar(pantalla)
 
     posicion = pygame.mouse.get_pos()
