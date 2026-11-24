@@ -13,11 +13,15 @@ class Acercamientos:
         self.ancho = ancho
         self.alto = alto
         self.actual = None
+        self.zonas_cajon = {}
+        self.rect_tarjeta = pygame.Rect(550, 400, 110, 80)
         self.imagenes = {}
 
         nombres = [
             "cajon",
             "cajon_vacio",
+            "cajon_sin_llave",
+            "cajon_sin_nota",
             "reloj",
             "reloj_resuelto",
             "baul_cerrado",
@@ -131,14 +135,46 @@ class Acercamientos:
 
             pantalla.blit(texto, (rect.x, rect.y))
 
-    def dibujar(self, pantalla):
+    def imagen_cajon(self, estado):
+        if estado.llave_obtenida and estado.nota_obtenida:
+            return "cajon_vacio"
+        if estado.llave_obtenida:
+            return "cajon_sin_llave"
+        if estado.nota_obtenida:
+            return "cajon_sin_nota"
+        return "cajon"
+
+    def actualizar_zonas_cajon(self, estado):
+        nombre = self.imagen_cajon(estado)
+        imagen = self.imagenes[nombre]
+        rect = imagen.get_rect(center=(self.ancho // 2, self.alto // 2))
+        self.zonas_cajon = {}
+        def zona(x, y, w, h):
+            return pygame.Rect(rect.x + int(x*rect.w), rect.y + int(y*rect.h),
+                               int(w*rect.w), int(h*rect.h))
+        if not estado.llave_obtenida:
+            self.zonas_cajon["llave"] = zona(.17, .43, .18, .37)
+        if not estado.nota_obtenida:
+            self.zonas_cajon["nota"] = zona(.35, .21, .47, .48)
+
+    def zona_baul(self):
+        if self.actual not in ("baul_cerrado", "baul_abierto"):
+            return None
+        imagen = self.imagenes[self.actual]
+        rect = imagen.get_rect(center=(self.ancho // 2, self.alto // 2))
+        x, y, w, h = ((.53, .45, .12, .19) if self.actual == "baul_cerrado"
+                      else (.72, .22, .12, .32))
+        return pygame.Rect(rect.x + int(x*rect.w), rect.y + int(y*rect.h),
+                           int(w*rect.w), int(h*rect.h))
+
+    def dibujar(self, pantalla, estado):
 
         if not self.esta_abierto():
             return
 
         pantalla.fill((24, 13, 19))
 
-        imagen = self.imagenes[self.actual]
+        imagen = self.imagenes[self.imagen_cajon(estado) if self.actual == "cajon" else ("reloj_resuelto" if self.actual == "reloj" and estado.reloj_resuelto else self.actual)]
 
         rect = imagen.get_rect(
             center=(self.ancho // 2, self.alto // 2)
@@ -153,7 +189,8 @@ class Acercamientos:
 
     def actualizar_cursor(self, posicion, vista):
         if self.esta_abierto():
-            interactivo = self.rect_regresar.collidepoint(posicion)
+            zona = self.zona_baul()
+            interactivo = self.rect_regresar.collidepoint(posicion) or (zona is not None and zona.collidepoint(posicion))
 
         else:
             interactivo = any(
