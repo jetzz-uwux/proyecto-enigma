@@ -1,6 +1,8 @@
 
 import pygame
 import cv2
+import time
+from juego.inventario import NOTA
 from interacciones.aruco import LectorArUco
 from juego.habitacion import Habitacion
 from juego.acercamientos import Acercamientos
@@ -41,7 +43,7 @@ acercamientos.actualizar_zonas_cajon(estado)
 
 MENSAJES = {
     "cajon": "Parece que alguien dejó algunos objetos aquí.",
-    "reloj": "Un antiguo reloj. Consulta la nota del inventario para descubrir la hora.",
+    "reloj": "Faltan las manecillas. Busca entre los libros y en el vestuario.",
     "baul_cerrado": "El baúl está cerrado. Necesito una llave.",
     "baul_abierto": "Solo el eco de la última función podrá revelar lo que aquí se esconde.",
     "escaner": "Necesito una tarjeta para autorizar el acceso.",
@@ -55,6 +57,44 @@ MENSAJES_VISTA = {
     "posterior": "La puerta está cerrada. Hay un baúl y una terminal de acceso."
 }
 
+# Cada zona contiene un rectángulo, un objeto opcional y un mensaje.
+ZONAS_INVESTIGACION = {
+    'izquierda': [
+        (pygame.Rect(720, 380, 135, 95), 'manecilla_hora', 'Encontraste la manecilla de la hora entre los libros.'),
+        (pygame.Rect(145, 175, 225, 115), None, 'Un cuadro de una antigua función. No hay nada detrás.'),
+        (pygame.Rect(900, 345, 105, 125), None, 'Un globo antiguo. No parece esconder nada.'),
+    ],
+    'derecha': [
+        (pygame.Rect(115, 175, 105, 50), 'manecilla_minuto', 'Encontraste la manecilla de los minutos en el estante de las máscaras.'),
+        (pygame.Rect(100, 230, 225, 95), None, 'Abanicos de antiguas funciones. No encuentro nada útil.'),
+        (pygame.Rect(550, 105, 290, 65), None, 'Sombrereras llenas de polvo. Están vacías.'),
+        (pygame.Rect(600, 220, 170, 300), None, 'Un vestido de escena. No hay nada en sus pliegues.'),
+    ],
+}
+
+def zonas_disponibles():
+    if acercamientos.esta_abierto():
+        return []
+    return [z for z in ZONAS_INVESTIGACION.get(habitacion.vista_actual, [])
+            if z[1] is None or z[1] not in estado.manecillas_encontradas]
+
+
+def zona_investigable(pos):
+    if any(r.collidepoint(pos) for r in (interfaz.rect_dialogo,
+            interfaz.rect_inventario, interfaz.rect_microfono,
+            habitacion.rect_izquierda, habitacion.rect_derecha)):
+        return None
+    if modo == 'objetos' and frame is not None and pygame.Rect(95, 5, 220, 165).collidepoint(pos):
+        return None
+    return next((z for z in zonas_disponibles() if z[0].collidepoint(pos)), None)
+
+MARCADORES = {0: 'llave', 1: 'nota', 2: 'tarjeta', 3: 'manecilla_hora', 4: 'manecilla_minuto'}
+INSCRIPCION = 'Un dedo señala el destino; cinco anuncian la libertad. Respeta el orden y el último telón caerá.'
+ultimo_id = None
+inicio_id = 0.0
+procesado_id = None
+modo_anterior = None
+modo = None
 ejecutando = True
 
 while ejecutando:
@@ -92,7 +132,7 @@ while ejecutando:
                 if estado.resolver_reloj():
                     interfaz.cambiar_mensaje("El último secreto permanece detrás del TELÓN.")
                 else:
-                    interfaz.cambiar_mensaje("Primero encuentra la nota.")
+                    interfaz.cambiar_mensaje("Primero encuentra la nota y coloca ambas manecillas.")
 
             elif evento.key == pygame.K_F3 and acercamientos.debug and acercamientos.actual == "baul_abierto":
                 if estado.validar_palabra("TELÓN"):
@@ -136,7 +176,7 @@ while ejecutando:
                     if acercamientos.actual == "baul_abierto" and estado.palabra_validada and not estado.tarjeta_obtenida and acercamientos.rect_tarjeta.collidepoint(evento.pos):
                         if inventario.agregar("tarjeta"):
                             estado.tarjeta_obtenida = True
-                            interfaz.cambiar_mensaje("Has recogido la tarjeta de acceso.")
+                            interfaz.cambiar_mensaje("Has recogido la tarjeta. Parece ocultar algo en su reverso.")
                         continue
                     zona_baul = acercamientos.zona_baul()
                     if zona_baul is not None and zona_baul.collidepoint(evento.pos):
@@ -179,6 +219,15 @@ while ejecutando:
 
                 else:
 
+                    hallazgo = zona_investigable(evento.pos)
+                    if hallazgo:
+                        _, nombre, mensaje = hallazgo
+                        if nombre is None:
+                            interfaz.cambiar_mensaje(mensaje)
+                        elif inventario.agregar(nombre):
+                            estado.manecillas_encontradas.add(nombre)
+                            interfaz.cambiar_mensaje(mensaje + ' Presenta su marcador en el reloj.')
+                        continue
                     if habitacion.vista_actual == "posterior" and acercamientos.rect_puerta.collidepoint(evento.pos):
                         interfaz.cambiar_mensaje("Confirma la apertura mediante el gesto indicado." if estado.acceso_autorizado else "La puerta está bloqueada. Autoriza el acceso en la terminal.")
                         continue
@@ -211,7 +260,12 @@ while ejecutando:
     ):
         interfaz.cambiar_mensaje(MENSAJES_VISTA[habitacion.vista_actual])
 
-    necesita_camara = acercamientos.actual == "escaner" and estado.tarjeta_obtenida and not estado.acceso_autorizado
+    modo = 'escaner' if acercamientos.actual == 'escaner' and estado.tarjeta_obtenida and not estado.acceso_autorizado else 'objetos' if not estado.juego_completado else None
+    if modo != modo_anterior:
+        lector.reiniciar_escaneo()
+        ultimo_id = procesado_id = None
+        modo_anterior = modo
+    necesita_camara = modo is not None
     if necesita_camara:
         if not intento_camara:
             intento_camara = True
@@ -219,8 +273,32 @@ while ejecutando:
             if not camara_activa:
                 interfaz.cambiar_mensaje("No se pudo abrir la cámara. Regresa e inténtalo de nuevo.")
         if camara_activa:
-            _, frame = lector.detectar(escaneo_activo=True)
-            if lector.autorizado:
+            _, frame = lector.detectar(escaneo_activo=modo == 'escaner')
+            if modo == 'objetos':
+                ids = lector.ids_detectados
+                actual_id = ids[0] if len(ids) == 1 else None
+                if actual_id != ultimo_id:
+                    ultimo_id = actual_id
+                    inicio_id = time.monotonic()
+                    procesado_id = None
+                if actual_id is not None and actual_id != procesado_id and time.monotonic() - inicio_id >= 0.8:
+                    procesado_id = actual_id
+                    nombre = MARCADORES.get(actual_id)
+                    if nombre not in inventario.objetos:
+                        interfaz.cambiar_mensaje('Primero encuentra el objeto correspondiente.' if nombre else 'Marcador desconocido.')
+                    else:
+                        inventario.seleccionado = nombre
+                        if nombre == 'nota':
+                            interfaz.cambiar_mensaje(NOTA)
+                        elif nombre == 'tarjeta':
+                            estado.inscripcion_revelada = True
+                            interfaz.cambiar_mensaje(INSCRIPCION)
+                        elif nombre.startswith('manecilla') and acercamientos.actual == 'reloj':
+                            estado.manecillas_colocadas.add(nombre)
+                            interfaz.cambiar_mensaje('Ambas manecillas colocadas. Consulta la nota.' if len(estado.manecillas_colocadas) == 2 else 'Manecilla colocada. Falta la otra.')
+                        else:
+                            interfaz.cambiar_mensaje('Objeto seleccionado: ' + nombre.replace('_', ' '))
+            if modo == 'escaner' and lector.autorizado:
                 estado.acceso_autorizado = True
                 acercamientos.abrir("escaner_autorizado")
                 interfaz.cambiar_mensaje("Acceso autorizado. Falta confirmar la apertura de la puerta.")
@@ -261,6 +339,12 @@ while ejecutando:
         pantalla.blit(fuente_prueba.render(lector.estado, True, (240, 220, 180)), (450, 432))
         pygame.draw.rect(pantalla, (90, 75, 65), (450, 460, 380, 12))
         pygame.draw.rect(pantalla, (90, 220, 120), (450, 460, int(380*lector.progreso), 12))
+    if acercamientos.debug:
+        for zona, _, _ in zonas_disponibles():
+            pygame.draw.rect(pantalla, (255, 215, 0), zona, 2, border_radius=5)
+    if modo == 'objetos' and frame is not None:
+        camara_ui.dibujar(pantalla, frame, (95, 5, 220, 145))
+        pantalla.blit(fuente_prueba.render('Presenta un marcador', True, (240,220,180)), (110, 145))
     interfaz.dibujar(pantalla)
     if not estado.juego_completado:
         modo_ayuda = "reloj" if acercamientos.actual == "reloj" and not estado.reloj_resuelto else "puerta" if estado.acceso_autorizado and habitacion.vista_actual == "posterior" and not acercamientos.esta_abierto() else "exploracion"
@@ -274,7 +358,10 @@ while ejecutando:
         reloj.tick(FPS)
         continue
 
-    if (acercamientos.actual == "baul_abierto" and estado.palabra_validada and not estado.tarjeta_obtenida and acercamientos.rect_tarjeta.collidepoint(posicion)) or inventario.objeto_en(posicion) or (
+    hallazgo = zona_investigable(posicion)
+    if hallazgo:
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+    elif (acercamientos.actual == "baul_abierto" and estado.palabra_validada and not estado.tarjeta_obtenida and acercamientos.rect_tarjeta.collidepoint(posicion)) or inventario.objeto_en(posicion) or (
         acercamientos.actual == "cajon" and any(
             nombre not in inventario.objetos and rect.collidepoint(posicion)
             for nombre, rect in acercamientos.zonas_cajon.items()

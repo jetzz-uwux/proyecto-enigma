@@ -1,5 +1,8 @@
 class EstadoJuego:
     def __init__(self):
+        self.manecillas_encontradas = set()
+        self.manecillas_colocadas = set()
+        self.inscripcion_revelada = False
         self.cajon_abierto = False
         self.llave_obtenida = False
         self.nota_obtenida = False
@@ -12,7 +15,7 @@ class EstadoJuego:
         self.juego_completado = False
 
     def resolver_reloj(self):
-        if not self.nota_obtenida:
+        if not self.nota_obtenida or len(self.manecillas_colocadas) != 2:
             return False
         self.reloj_resuelto = True
         return True

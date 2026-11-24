@@ -3,6 +3,12 @@
 def obtener_pista(estado):
     if not (estado.llave_obtenida and estado.nota_obtenida):
         return 'frontal', 'cajon', 'Revisa el cajón del tocador; aún quedan objetos por recoger.'
+    if 'manecilla_hora' not in estado.manecillas_encontradas:
+        return 'izquierda', 'manecilla_hora', 'Busca entre los libros de la estantería.'
+    if 'manecilla_minuto' not in estado.manecillas_encontradas:
+        return 'derecha', 'manecilla_minuto', 'Busca cerca de las máscaras del vestuario.'
+    if len(estado.manecillas_colocadas) != 2:
+        return 'izquierda', 'reloj', 'Presenta los marcadores de ambas manecillas frente al reloj.'
     if not estado.reloj_resuelto:
         return 'izquierda', 'reloj', 'Consulta la nota del inventario y observa el reloj.'
     if not estado.baul_abierto:
@@ -14,7 +20,7 @@ def obtener_pista(estado):
     if not estado.acceso_autorizado:
         return 'posterior', 'escaner', 'Acerca la tarjeta física al escáner de la puerta.'
     if not estado.juego_completado:
-        return 'posterior', 'puerta', 'Regresa a la puerta y confirma su apertura.'
+        return 'posterior', 'puerta', 'Consulta la inscripción de la tarjeta con su marcador. Un dedo primero, cinco después.'
     return None, None, 'Has completado el camerino.'
 
 def mensaje_pista(estado, vista):

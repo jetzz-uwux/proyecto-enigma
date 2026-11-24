@@ -9,7 +9,7 @@ class Inventario:
         self.objetos = []
         self.seleccionado = None
         carpeta = Path(__file__).resolve().parent.parent / 'assets' / 'objetos'
-        self.imagenes = {n: pygame.image.load(str(carpeta / f'{n}.png')).convert_alpha() for n in ('llave', 'nota', 'tarjeta')}
+        self.imagenes = {n: pygame.image.load(str(carpeta / f'{n}.png')).convert_alpha() for n in ('llave', 'nota', 'tarjeta', 'manecilla_hora', 'manecilla_minuto')}
 
     def agregar(self, nombre):
         if nombre in self.objetos or len(self.objetos) >= len(self.espacios):
@@ -28,6 +28,10 @@ class Inventario:
         self.seleccionado = nombre if nombre != self.seleccionado else None
         if nombre == 'nota':
             return NOTA
+        if nombre == 'tarjeta':
+            return 'El reverso tiene una inscripción oculta. Presenta el marcador de la tarjeta.'
+        if nombre in ('manecilla_hora', 'manecilla_minuto'):
+            return 'Lleva esta manecilla al reloj y presenta su marcador.'
         if nombre == 'llave':
             return 'Llave dorada seleccionada.' if self.seleccionado else 'Llave deseleccionada.'
         return None

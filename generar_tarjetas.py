@@ -15,8 +15,12 @@ TAMANO_MARCADOR = 600
 MARGEN = 100
 
 TARJETAS = {
+    0: "llave.png",
+    1: "nota.png",
     2: "acceso.png",
-    3: "prueba_incorrecta.png"
+    3: "manecilla_hora.png",
+    4: "manecilla_minuto.png",
+    5: "prueba_incorrecta.png"
 }
 
 
