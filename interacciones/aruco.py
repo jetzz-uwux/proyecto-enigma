@@ -1,78 +1,63 @@
-
 import cv2
+from pathlib import Path
+
+# Configuracion de rutas
+BASE_DIR = Path(__file__).resolve().parent
+CARPETA_TARJETAS = BASE_DIR / "assets" / "tarjetas"
+
+CARPETA_TARJETAS.mkdir(parents=True, exist_ok=True)
+
+# Configuracion ArUco
+DICCIONARIO = cv2.aruco.getPredefinedDictionary(
+    cv2.aruco.DICT_4X4_50
+)
+
+TAMANO_MARCADOR = 600
+MARGEN = 100
+
+TARJETAS = {
+    2: "acceso.png",
+    3: "prueba_incorrecta.png"
+}
 
 
-class LectorArUco:
-    def __init__(self):
-        diccionario = cv2.aruco.getPredefinedDictionary(
-            cv2.aruco.DICT_4X4_50
-        )
+def generar_tarjeta(id_marcador, nombre_archivo):
 
-        parametros = cv2.aruco.DetectorParameters()
+    marcador = cv2.aruco.generateImageMarker(
+        DICCIONARIO,
+        id_marcador,
+        TAMANO_MARCADOR
+    )
 
-        self.detector = cv2.aruco.ArucoDetector(
-            diccionario, parametros
-        )
+    # Margen blanco necesario para facilitar la deteccion
+    tarjeta = cv2.copyMakeBorder(
+        marcador,
+        MARGEN,
+        MARGEN,
+        MARGEN,
+        MARGEN,
+        cv2.BORDER_CONSTANT,
+        value=255
+    )
 
-        self.camara = None
+    ruta = CARPETA_TARJETAS / nombre_archivo
 
-        self.objetos = {
-            1: "Llave",
-            2: "Tarjeta"
-        }
+    if not cv2.imwrite(str(ruta), tarjeta):
+        raise IOError(f"No se pudo guardar: {ruta}")
 
-    def iniciar(self):
-        self.camara = cv2.VideoCapture(0)
+    print(f"Tarjeta generada: {nombre_archivo}")
+    print(f"ID: {id_marcador}")
+    print(f"Ruta: {ruta}")
+    print("-" * 40)
 
-        if not self.camara.isOpened():
-            self.camara.release()
-            self.camara = None
-            return False
 
-        return True
+if __name__ == "__main__":
 
-    def detectar(self):
-        if self.camara is None:
-            return [], None
+    print("ENIGMA: Ecos del Olvido")
+    print("Generador de tarjetas ArUco")
+    print("=" * 40)
 
-        correcto, imagen = self.camara.read()
+    for id_marcador, nombre in TARJETAS.items():
+        generar_tarjeta(id_marcador, nombre)
 
-        if not correcto:
-            return [], None
-
-        esquinas, ids, _ = self.detector.detectMarkers(imagen)
-
-        nombres = []
-
-        if ids is not None:
-            cv2.aruco.drawDetectedMarkers(
-                imagen, esquinas, ids
-            )
-
-            for indice, identificador in enumerate(ids.flatten()):
-                nombre = self.objetos.get(int(identificador))
-
-                if nombre is not None:
-                    nombres.append(nombre)
-
-                    puntos = esquinas[indice][0]
-
-                    x = int(puntos[:, 0].min())
-                    y = int(puntos[:, 1].min())
-
-                    cv2.putText(
-                        imagen,
-                        nombre,
-                        (x, max(25, y - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8,
-                        (0, 255, 0),
-                        2
-                    )
-
-        return nombres, imagen
-
-    def cerrar(self):
-        if self.camara is not None:
-            self.camara.release()
-            self.camara = None
+    print("Todas las tarjetas fueron generadas.")
