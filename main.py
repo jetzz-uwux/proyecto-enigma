@@ -12,6 +12,8 @@ from juego.inventario import Inventario
 from juego.camara_ui import CamaraUI
 from juego.orientacion import Orientacion
 from juego.ayuda_gestual import AyudaGestual
+from interacciones.gestos import LectorGestos
+from juego.reloj import RelojInteractivo
 
 pygame.init()
 
@@ -35,6 +37,11 @@ lector = LectorArUco()
 camara_ui = CamaraUI()
 ayuda_gestual = AyudaGestual()
 orientacion = Orientacion()
+gestos = LectorGestos()
+reloj_ui = RelojInteractivo(ANCHO, ALTO, lector=gestos)
+# El lector ArUco es el único propietario de la webcam.
+reloj_ui.camara_disponible = True
+ayuda_gestual.activa = False
 camara_activa = False
 intento_camara = False
 frame = None
@@ -314,9 +321,20 @@ while ejecutando:
         intento_camara = False
         frame = None
 
+    reloj_listo = (acercamientos.actual == "reloj" and len(estado.manecillas_colocadas) == 2 and estado.nota_obtenida and not estado.reloj_resuelto)
+    if reloj_listo and frame is not None:
+        datos = gestos.reconocer_datos(frame)
+        reloj_ui._procesar_gesto(datos)
+        if reloj_ui.resuelto and estado.resolver_reloj():
+            interfaz.cambiar_mensaje("El último secreto permanece detrás del TELÓN.")
+
     if acercamientos.esta_abierto():
 
-        acercamientos.dibujar(pantalla, estado)
+        if reloj_listo and not estado.reloj_resuelto:
+            reloj_ui.dibujar(pantalla)
+            pantalla.blit(acercamientos.btn_regresar, acercamientos.rect_regresar)
+        else:
+            acercamientos.dibujar(pantalla, estado)
         zona_baul = acercamientos.zona_baul()
         if acercamientos.debug and zona_baul is not None:
             pygame.draw.rect(pantalla, (255, 200, 60), zona_baul, 2)
@@ -413,5 +431,6 @@ while ejecutando:
 
     reloj.tick(FPS)
 
+gestos.cerrar()
 lector.cerrar()
 pygame.quit()
