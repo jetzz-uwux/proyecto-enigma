@@ -2,6 +2,7 @@
 import pygame
 import cv2
 import time
+from pathlib import Path
 from juego.inventario import NOTA
 from interacciones.aruco import LectorArUco
 from juego.habitacion import Habitacion
@@ -14,6 +15,7 @@ from juego.orientacion import Orientacion
 from juego.ayuda_gestual import AyudaGestual
 from interacciones.gestos import LectorGestos
 from juego.reloj import RelojInteractivo
+from juego.secuencia_final import SecuenciaFinal
 
 pygame.init()
 
@@ -104,6 +106,32 @@ procesado_id = None
 modo_anterior = None
 modo = None
 ejecutando = True
+secuencia_final = SecuenciaFinal()
+puerta_activa = False
+
+# Integración del módulo de voz sin modificar el código del compañero.
+voz = None
+estado_voz = "espera"
+fin_estado_voz = 0.0
+contexto_voz = None
+try:
+    from interacciones.voz import ReconocedorVoz
+    voz = ReconocedorVoz(str(Path(__file__).resolve().parent / "modelos" / "vosk-model-small-es-0.42"))
+except Exception as error:
+    print(f"[Voz] No disponible: {error}")
+
+
+def activar_voz():
+    global contexto_voz
+    if voz is None:
+        interfaz.cambiar_mensaje("Micrófono no disponible. Revisa las dependencias y el modelo de voz.")
+        return
+    if voz.esta_escuchando():
+        return
+    contexto_voz = acercamientos.actual
+    voz.escuchar(tiempo_max=4)
+    interfaz.cambiar_mensaje("Escuchando... Pronuncia la palabra secreta o solicita una pista." if contexto_voz == "baul_abierto" and estado.reloj_resuelto else "Escuchando... Di ‘pista’ si necesitas ayuda.")
+
 
 while ejecutando:
 
@@ -183,6 +211,10 @@ while ejecutando:
                         interfaz.cambiar_mensaje(mensaje)
                     continue
 
+                if interfaz.rect_microfono.collidepoint(evento.pos):
+                    activar_voz()
+                    continue
+
                 if interfaz.manejar_clic(evento.pos):
                     continue
 
@@ -209,7 +241,7 @@ while ejecutando:
                             if not estado.reloj_resuelto:
                                 interfaz.cambiar_mensaje("Quizás el reloj esconda la palabra que necesito.")
                             else:
-                                interfaz.cambiar_mensaje("El reconocimiento de voz aún no está integrado.")
+                                activar_voz()
                         continue
 
                     if acercamientos.actual == "cajon":
@@ -244,7 +276,12 @@ while ejecutando:
                             interfaz.cambiar_mensaje(mensaje + ' Presenta su marcador en el reloj.')
                         continue
                     if habitacion.vista_actual == "posterior" and acercamientos.rect_puerta.collidepoint(evento.pos):
-                        interfaz.cambiar_mensaje("Confirma la apertura mediante el gesto indicado." if estado.acceso_autorizado else "La puerta está bloqueada. Autoriza el acceso en la terminal.")
+                        if estado.acceso_autorizado:
+                            puerta_activa = True
+                            secuencia_final.reiniciar()
+                            interfaz.cambiar_mensaje("Reproduce la secuencia oculta en la tarjeta frente a la cámara.")
+                        else:
+                            interfaz.cambiar_mensaje("La puerta está bloqueada. Autoriza el acceso en la terminal.")
                         continue
 
                     if not habitacion.manejar_clic(evento.pos):
@@ -335,6 +372,47 @@ while ejecutando:
         if reloj_ui.resuelto and estado.resolver_reloj():
             interfaz.cambiar_mensaje("El último secreto permanece detrás del TELÓN.")
 
+    if puerta_activa:
+        if acercamientos.esta_abierto() or habitacion.vista_actual != "posterior" or estado.juego_completado:
+            puerta_activa = False
+            secuencia_final.reiniciar()
+        else:
+            gesto = gestos.reconocer_datos(frame)["gesto"] if frame is not None else "SIN MANO"
+            resultado = secuencia_final.actualizar(gesto, time.monotonic())
+            if resultado == "primero":
+                interfaz.cambiar_mensaje("Primer gesto reconocido. Completa la secuencia (1/2).")
+            elif resultado == "reinicio":
+                interfaz.cambiar_mensaje("Secuencia interrumpida. Consulta la tarjeta y vuelve a intentarlo.")
+            elif resultado == "completo" and estado.confirmar_salida():
+                puerta_activa = False
+                acercamientos.abrir("puerta_abierta")
+                interfaz.cambiar_mensaje("Los secretos del camerino han sido revelados. Finalmente, eres libre.")
+                lector.cerrar()
+                camara_activa = False
+                frame = None
+                modo = None
+
+    if voz is not None:
+        comando = voz.obtener_comando()
+        if comando is not None and not estado.juego_completado:
+            estado_voz = "correcto"
+            if comando == "PISTA":
+                orientacion.solicitar(estado, habitacion, acercamientos, interfaz)
+            elif comando == "TELON":
+                if contexto_voz == "baul_abierto" and acercamientos.actual == "baul_abierto" and estado.validar_palabra(comando):
+                    interfaz.cambiar_mensaje("La tarjeta ha sido revelada. Recógela." if not estado.tarjeta_obtenida else "Ya has recogido la tarjeta.")
+                else:
+                    estado_voz = "incorrecto"
+                    interfaz.cambiar_mensaje("Esa palabra debe pronunciarse frente al baúl abierto, después de resolver el reloj.")
+            else:
+                estado_voz = "incorrecto"
+                interfaz.cambiar_mensaje("No reconocí una palabra válida. Inténtalo de nuevo.")
+            fin_estado_voz = time.monotonic() + 2
+        if voz.esta_escuchando():
+            interfaz.actualizar_voz(True, "escuchando")
+        else:
+            interfaz.actualizar_voz(True, estado_voz if time.monotonic() < fin_estado_voz else "espera")
+
     if acercamientos.esta_abierto():
 
         if reloj_listo and not estado.reloj_resuelto:
@@ -375,7 +453,7 @@ while ejecutando:
             pygame.draw.rect(pantalla, (255, 215, 0), zona, 2, border_radius=5)
     if modo == 'objetos' and frame is not None:
         camara_ui.dibujar(pantalla, frame, (95, 5, 220, 145))
-        pantalla.blit(fuente_prueba.render('Marcador del objeto obtenido', True, (240,220,180)), (95, 145))
+        pantalla.blit(fuente_prueba.render(('Secuencia: %d/2' % secuencia_final.paso) if puerta_activa else 'Marcador del objeto obtenido', True, (240,220,180)), (95, 145))
     interfaz.dibujar(pantalla)
     if not estado.juego_completado:
         modo_ayuda = "reloj" if acercamientos.actual == "reloj" and not estado.reloj_resuelto else "puerta" if estado.acceso_autorizado and habitacion.vista_actual == "posterior" and not acercamientos.esta_abierto() else "exploracion"
@@ -441,6 +519,8 @@ while ejecutando:
 
     reloj.tick(FPS)
 
+if voz is not None:
+    voz.cerrar()
 gestos.cerrar()
 lector.cerrar()
 pygame.quit()

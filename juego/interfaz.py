@@ -156,7 +156,7 @@ class Interfaz:
         )
 
         if self.voz_disponible:
-            etiquetas = {"espera": "Di ‘pista’", "escuchando": "Escuchando...", "correcto": "Reconocido", "incorrecto": "Intenta de nuevo"}
+            etiquetas = {"espera": "Pulsa y di ‘pista’", "escuchando": "Escuchando...", "correcto": "Reconocido", "incorrecto": "Intenta de nuevo"}
             colores = {"espera": (240,220,180), "escuchando": (255,215,100), "correcto": (120,230,150), "incorrecto": (255,140,130)}
             color = colores.get(self.estado_voz, colores["espera"])
             texto = self.fuente_voz.render(etiquetas.get(self.estado_voz, etiquetas["espera"]), True, color)
