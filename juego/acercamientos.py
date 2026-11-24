@@ -79,7 +79,7 @@ class Acercamientos:
         }
 
         # Activar para visualizar las zonas clicables
-        self.debug = True
+        self.debug = False
 
     def abrir(self, nombre):
 
