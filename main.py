@@ -10,7 +10,7 @@ from juego.interfaz import Interfaz
 from juego.estado import EstadoJuego
 from juego.inventario import Inventario
 from juego.camara_ui import CamaraUI
-from juego.pistas import mensaje_pista
+from juego.orientacion import Orientacion
 from juego.ayuda_gestual import AyudaGestual
 
 pygame.init()
@@ -34,6 +34,7 @@ estado = EstadoJuego()
 lector = LectorArUco()
 camara_ui = CamaraUI()
 ayuda_gestual = AyudaGestual()
+orientacion = Orientacion()
 camara_activa = False
 intento_camara = False
 frame = None
@@ -43,7 +44,7 @@ acercamientos.actualizar_zonas_cajon(estado)
 
 MENSAJES = {
     "cajon": "Parece que alguien dejó algunos objetos aquí.",
-    "reloj": "Faltan las manecillas. Busca entre los libros y en el vestuario.",
+    "reloj": "Faltan las manecillas. Investiga los muebles del camerino.",
     "baul_cerrado": "El baúl está cerrado. Necesito una llave.",
     "baul_abierto": "Solo el eco de la última función podrá revelar lo que aquí se esconde.",
     "escaner": "Necesito una tarjeta para autorizar el acceso.",
@@ -141,7 +142,7 @@ while ejecutando:
                     interfaz.cambiar_mensaje("Primero resuelve el reloj.")
 
             elif evento.key == pygame.K_F5 and acercamientos.debug:
-                interfaz.cambiar_mensaje(mensaje_pista(estado, habitacion.vista_actual))
+                orientacion.solicitar(estado, habitacion, acercamientos, interfaz)
 
             elif evento.key == pygame.K_F1:
 
@@ -176,7 +177,7 @@ while ejecutando:
                     if acercamientos.actual == "baul_abierto" and estado.palabra_validada and not estado.tarjeta_obtenida and acercamientos.rect_tarjeta.collidepoint(evento.pos):
                         if inventario.agregar("tarjeta"):
                             estado.tarjeta_obtenida = True
-                            interfaz.cambiar_mensaje("Has recogido la tarjeta. Parece ocultar algo en su reverso.")
+                            interfaz.cambiar_mensaje("Has recogido la tarjeta. Su reverso parece ocultar algo. Investiga su marcador.")
                         continue
                     zona_baul = acercamientos.zona_baul()
                     if zona_baul is not None and zona_baul.collidepoint(evento.pos):
@@ -184,7 +185,7 @@ while ejecutando:
                             if not estado.llave_obtenida:
                                 interfaz.cambiar_mensaje("Necesito encontrar una llave para abrir el baúl.")
                             elif inventario.seleccionado != "llave":
-                                interfaz.cambiar_mensaje("Selecciona la llave dorada del inventario.")
+                                interfaz.cambiar_mensaje("Presenta el marcador de la llave o selecciónala en el inventario.")
                             else:
                                 estado.baul_abierto = True
                                 inventario.seleccionado = None
@@ -252,6 +253,10 @@ while ejecutando:
                                 ""
                             )
 
+                            if acercamientos.actual == "reloj" and len(estado.manecillas_colocadas) == 2:
+                                mensaje = "Consulta la nota y ajusta la hora." if not estado.reloj_resuelto else "El último secreto permanece detrás del TELÓN."
+                            elif acercamientos.actual == "reloj" and estado.manecillas_encontradas:
+                                mensaje = "Presenta los marcadores de las manecillas encontradas."
                             interfaz.cambiar_mensaje("Presenta la tarjeta física frente a la cámara." if acercamientos.actual == "escaner" and estado.tarjeta_obtenida else mensaje)
 
     if not acercamientos.esta_abierto() and (
@@ -344,12 +349,13 @@ while ejecutando:
             pygame.draw.rect(pantalla, (255, 215, 0), zona, 2, border_radius=5)
     if modo == 'objetos' and frame is not None:
         camara_ui.dibujar(pantalla, frame, (95, 5, 220, 145))
-        pantalla.blit(fuente_prueba.render('Presenta un marcador', True, (240,220,180)), (110, 145))
+        pantalla.blit(fuente_prueba.render('Marcador del objeto obtenido', True, (240,220,180)), (95, 145))
     interfaz.dibujar(pantalla)
     if not estado.juego_completado:
         modo_ayuda = "reloj" if acercamientos.actual == "reloj" and not estado.reloj_resuelto else "puerta" if estado.acceso_autorizado and habitacion.vista_actual == "posterior" and not acercamientos.esta_abierto() else "exploracion"
         ayuda_gestual.dibujar(pantalla, modo_ayuda)
     inventario.dibujar(pantalla)
+    orientacion.dibujar(pantalla, estado, habitacion, acercamientos, zonas_disponibles(), interfaz, inventario)
 
     posicion = pygame.mouse.get_pos()
     if estado.juego_completado:

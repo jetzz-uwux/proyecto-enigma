@@ -68,6 +68,13 @@ class Interfaz:
             self.espacios.append(rect)
 
         self.debug = False
+        self.voz_disponible = False
+        self.estado_voz = "espera"
+        self.fuente_voz = pygame.font.SysFont("georgia", 15)
+
+    def actualizar_voz(self, disponible, estado="espera"):
+        self.voz_disponible = disponible
+        self.estado_voz = estado
 
     def cargar_imagen(self, nombre, dimensiones):
 
@@ -147,6 +154,17 @@ class Interfaz:
             self.btn_microfono,
             self.rect_microfono
         )
+
+        if self.voz_disponible:
+            etiquetas = {"espera": "Di ‘pista’", "escuchando": "Escuchando...", "correcto": "Reconocido", "incorrecto": "Intenta de nuevo"}
+            colores = {"espera": (240,220,180), "escuchando": (255,215,100), "correcto": (120,230,150), "incorrecto": (255,140,130)}
+            color = colores.get(self.estado_voz, colores["espera"])
+            texto = self.fuente_voz.render(etiquetas.get(self.estado_voz, etiquetas["espera"]), True, color)
+            rect = texto.get_rect(topright=(self.rect_microfono.right, self.rect_microfono.bottom + 4))
+            pygame.draw.rect(pantalla, (35,22,28), rect.inflate(12,6), border_radius=4)
+            pantalla.blit(texto, rect)
+            if self.estado_voz == "escuchando":
+                pygame.draw.rect(pantalla, color, self.rect_microfono, 2, border_radius=8)
 
         # Texto del dialogo
         lineas = self.dividir_texto(

@@ -17,6 +17,8 @@ def obtener_pista(estado):
         return 'posterior', 'baul_abierto', 'Recuerda la palabra revelada por el reloj y usa el micrófono del baúl.'
     if not estado.tarjeta_obtenida:
         return 'posterior', 'tarjeta', 'Recoge la tarjeta que apareció dentro del baúl.'
+    if not estado.inscripcion_revelada:
+        return 'posterior', 'inscripcion', 'Presenta el marcador de la tarjeta fuera del escáner para investigar su reverso.'
     if not estado.acceso_autorizado:
         return 'posterior', 'escaner', 'Acerca la tarjeta física al escáner de la puerta.'
     if not estado.juego_completado:
