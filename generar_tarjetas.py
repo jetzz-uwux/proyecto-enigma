@@ -2,13 +2,11 @@
 import cv2
 from pathlib import Path
 
-# Configuracion de rutas
 BASE_DIR = Path(__file__).resolve().parent
 CARPETA_TARJETAS = BASE_DIR / "assets" / "tarjetas"
 
 CARPETA_TARJETAS.mkdir(parents=True, exist_ok=True)
 
-# Configuracion ArUco
 DICCIONARIO = cv2.aruco.getPredefinedDictionary(
     cv2.aruco.DICT_4X4_50
 )
@@ -30,7 +28,6 @@ def generar_tarjeta(id_marcador, nombre_archivo):
         TAMANO_MARCADOR
     )
 
-    # Margen blanco necesario para facilitar la deteccion
     tarjeta = cv2.copyMakeBorder(
         marcador,
         MARGEN,
