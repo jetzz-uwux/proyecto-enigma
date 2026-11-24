@@ -24,3 +24,10 @@ class EstadoJuego:
             self.palabra_validada = True
             return True
         return False
+
+    def confirmar_salida(self):
+        if not self.acceso_autorizado:
+            return False
+        self.puerta_abierta = True
+        self.juego_completado = True
+        return True

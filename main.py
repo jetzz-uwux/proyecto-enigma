@@ -63,6 +63,10 @@ while ejecutando:
 
             ejecutando = False
 
+        elif estado.juego_completado:
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                ejecutando = False
+
         elif evento.type == pygame.KEYDOWN:
 
             if evento.key == pygame.K_ESCAPE:
@@ -71,6 +75,13 @@ while ejecutando:
                     acercamientos.cerrar()
                 else:
                     ejecutando = False
+
+            elif evento.key == pygame.K_F4 and acercamientos.debug and habitacion.vista_actual == "posterior" and not acercamientos.esta_abierto():
+                if estado.confirmar_salida():
+                    acercamientos.abrir("puerta_abierta")
+                    interfaz.cambiar_mensaje("Los secretos del camerino han sido revelados. Finalmente, eres libre.")
+                else:
+                    interfaz.cambiar_mensaje("Primero autoriza el acceso en la terminal.")
 
             elif evento.key == pygame.K_F2 and acercamientos.debug and acercamientos.actual == "reloj":
                 if estado.resolver_reloj():
@@ -160,6 +171,10 @@ while ejecutando:
 
                 else:
 
+                    if habitacion.vista_actual == "posterior" and acercamientos.rect_puerta.collidepoint(evento.pos):
+                        interfaz.cambiar_mensaje("Confirma la apertura mediante el gesto indicado." if estado.acceso_autorizado else "La puerta está bloqueada. Autoriza el acceso en la terminal.")
+                        continue
+
                     if not habitacion.manejar_clic(evento.pos):
 
                         acercamientos.manejar_clic(
@@ -245,6 +260,11 @@ while ejecutando:
     inventario.dibujar(pantalla)
 
     posicion = pygame.mouse.get_pos()
+    if estado.juego_completado:
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+        pygame.display.flip()
+        reloj.tick(FPS)
+        continue
 
     if (acercamientos.actual == "baul_abierto" and estado.palabra_validada and not estado.tarjeta_obtenida and acercamientos.rect_tarjeta.collidepoint(posicion)) or inventario.objeto_en(posicion) or (
         acercamientos.actual == "cajon" and any(

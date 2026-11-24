@@ -83,6 +83,7 @@ class Acercamientos:
         }
 
         # Activar para visualizar las zonas clicables
+        self.rect_puerta = pygame.Rect(545, 65, 345, 495)
         self.debug = False
 
     def abrir(self, nombre):
@@ -182,10 +183,8 @@ class Acercamientos:
 
         pantalla.blit(imagen, rect)
 
-        pantalla.blit(
-            self.btn_regresar,
-            self.rect_regresar
-        )
+        if not estado.juego_completado:
+            pantalla.blit(self.btn_regresar, self.rect_regresar)
 
     def actualizar_cursor(self, posicion, vista):
         if self.esta_abierto():
@@ -193,7 +192,7 @@ class Acercamientos:
             interactivo = self.rect_regresar.collidepoint(posicion) or (zona is not None and zona.collidepoint(posicion))
 
         else:
-            interactivo = any(
+            interactivo = (vista == "posterior" and self.rect_puerta.collidepoint(posicion)) or any(
                 rect.collidepoint(posicion)
                 for rect in self.zonas.get(vista, {}).values()
             )
