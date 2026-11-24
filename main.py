@@ -7,6 +7,7 @@ from juego.acercamientos import Acercamientos
 from juego.interfaz import Interfaz
 from juego.estado import EstadoJuego
 from juego.inventario import Inventario
+from juego.camara_ui import CamaraUI
 
 pygame.init()
 
@@ -27,6 +28,7 @@ acercamientos = Acercamientos(ANCHO, ALTO)
 interfaz = Interfaz(ANCHO, ALTO)
 estado = EstadoJuego()
 lector = LectorArUco()
+camara_ui = CamaraUI()
 camara_activa = False
 intento_camara = False
 frame = None
@@ -248,10 +250,7 @@ while ejecutando:
         imagen = inventario.imagen_ajustada("tarjeta", acercamientos.rect_tarjeta)
         pantalla.blit(imagen, imagen.get_rect(center=acercamientos.rect_tarjeta.center))
     if acercamientos.actual == "escaner" and frame is not None and camara_activa:
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        video = pygame.image.frombuffer(rgb.tobytes(), (rgb.shape[1], rgb.shape[0]), "RGB")
-        video = pygame.transform.smoothscale(video, (400, 300))
-        pantalla.blit(video, (440, 120))
+        camara_ui.dibujar(pantalla, frame, (340, 45, 600, 385))
         pygame.draw.rect(pantalla, (30, 20, 25), (440, 425, 400, 60))
         pantalla.blit(fuente_prueba.render(lector.estado, True, (240, 220, 180)), (450, 432))
         pygame.draw.rect(pantalla, (90, 75, 65), (450, 460, 380, 12))
