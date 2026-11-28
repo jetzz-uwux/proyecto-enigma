@@ -16,6 +16,8 @@ from juego.ayuda_gestual import AyudaGestual
 from interacciones.gestos import LectorGestos
 from juego.reloj import RelojInteractivo
 from juego.secuencia_final import SecuenciaFinal
+from juego.tutoriales import Tutoriales
+from interacciones.cursor_gestual import CursorGestual
 
 pygame.init()
 
@@ -108,6 +110,12 @@ modo = None
 ejecutando = True
 secuencia_final = SecuenciaFinal()
 puerta_activa = False
+cursor_gestual = CursorGestual(ANCHO, ALTO)
+modo_cursor_reloj = False
+reloj_previo = False
+palma_desde = None
+palma_bloqueada = False
+contexto_cursor = None
 
 # Integración del módulo de voz sin modificar el código del compañero.
 voz = None
@@ -133,6 +141,17 @@ def activar_voz():
     interfaz.cambiar_mensaje("Escuchando... Pronuncia la palabra secreta o solicita una pista." if contexto_voz == "baul_abierto" and estado.reloj_resuelto else "Escuchando... Di ‘pista’ si necesitas ayuda.")
 
 
+tutoriales = Tutoriales(ANCHO, ALTO)
+tutoriales.abrir("inicio")
+
+def tutorial_contextual():
+    if puerta_activa: return "puerta"
+    if acercamientos.actual in ("escaner", "escaner_autorizado"): return "escaner"
+    if acercamientos.actual == "reloj": return "reloj"
+    if acercamientos.actual == "baul_abierto": return "voz"
+    if inventario.objetos: return "aruco"
+    return "inicio"
+
 while ejecutando:
 
     vista_anterior = habitacion.vista_actual
@@ -147,6 +166,17 @@ while ejecutando:
         elif estado.juego_completado:
             if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
                 ejecutando = False
+
+        elif tutoriales.activo:
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                tutoriales.clic(evento.pos)
+                cursor_gestual.reiniciar()
+            elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                tutoriales.cerrar()
+                cursor_gestual.reiniciar()
+            elif evento.type == pygame.MOUSEMOTION:
+                cursor_gestual.reiniciar()
+            continue
 
         elif evento.type == pygame.KEYDOWN:
 
@@ -194,9 +224,17 @@ while ejecutando:
 
                     habitacion.girar_derecha()
 
+        elif evento.type == pygame.MOUSEMOTION:
+            cursor_gestual.reiniciar()
+
         elif evento.type == pygame.MOUSEBUTTONDOWN:
 
             if evento.button == 1:
+
+                if tutoriales.rect_ayuda.collidepoint(evento.pos):
+                    tutoriales.abrir(tutorial_contextual(), manual=True)
+                    secuencia_final.reiniciar()
+                    continue
 
                 if (acercamientos.actual == "reloj" and len(estado.manecillas_colocadas) == 2
                         and estado.nota_obtenida and not estado.reloj_resuelto
@@ -316,6 +354,9 @@ while ejecutando:
     ):
         interfaz.cambiar_mensaje(MENSAJES_VISTA[habitacion.vista_actual])
 
+    if not estado.juego_completado:
+        tutoriales.abrir(tutorial_contextual())
+
     modo = 'escaner' if acercamientos.actual == 'escaner' and estado.tarjeta_obtenida and not estado.acceso_autorizado else 'objetos' if not estado.juego_completado else None
     if modo != modo_anterior:
         lector.reiniciar_escaneo()
@@ -329,8 +370,10 @@ while ejecutando:
             if not camara_activa:
                 interfaz.cambiar_mensaje("No se pudo abrir la cámara. Regresa e inténtalo de nuevo.")
         if camara_activa:
-            _, frame = lector.detectar(escaneo_activo=modo == 'escaner')
-            if modo == 'objetos':
+            _, frame = lector.detectar(escaneo_activo=modo == 'escaner' and not tutoriales.activo)
+            if tutoriales.activo:
+                ultimo_id = procesado_id = None
+            if modo == 'objetos' and not tutoriales.activo:
                 ids = lector.ids_detectados
                 actual_id = ids[0] if len(ids) == 1 else None
                 if actual_id != ultimo_id:
@@ -354,7 +397,7 @@ while ejecutando:
                             interfaz.cambiar_mensaje('Ambas manecillas colocadas. Consulta la nota.' if len(estado.manecillas_colocadas) == 2 else 'Manecilla colocada. Falta la otra.')
                         else:
                             interfaz.cambiar_mensaje('Objeto seleccionado: ' + nombre.replace('_', ' '))
-            if modo == 'escaner' and lector.autorizado:
+            if modo == 'escaner' and lector.autorizado and not tutoriales.activo:
                 estado.acceso_autorizado = True
                 acercamientos.abrir("escaner_autorizado")
                 interfaz.cambiar_mensaje("Acceso autorizado. Falta confirmar la apertura de la puerta.")
@@ -366,18 +409,50 @@ while ejecutando:
         frame = None
 
     reloj_listo = (acercamientos.actual == "reloj" and len(estado.manecillas_colocadas) == 2 and estado.nota_obtenida and not estado.reloj_resuelto)
-    if reloj_listo and frame is not None:
-        datos = gestos.reconocer_datos(frame)
+    datos = gestos.reconocer_datos(frame) if frame is not None and not estado.juego_completado else {"gesto": "SIN MANO", "indice": None}
+    ahora = time.monotonic()
+    if reloj_listo != reloj_previo:
+        modo_cursor_reloj = False
+        palma_desde = None
+        palma_bloqueada = False
+        reloj_previo = reloj_listo
+    if reloj_listo and not tutoriales.activo:
+        if datos["gesto"] == "MANO ABIERTA":
+            if palma_desde is None:
+                palma_desde = ahora
+            if not palma_bloqueada and ahora - palma_desde >= .7:
+                modo_cursor_reloj = not modo_cursor_reloj
+                palma_bloqueada = True
+                reloj_ui.seleccionada = None
+                reloj_ui.cursor_indice = None
+                reloj_ui._reiniciar_control()
+                reloj_ui._gesto_anterior = "SIN MANO"
+                cursor_gestual.reiniciar()
+        else:
+            palma_desde = None
+            palma_bloqueada = False
+    contexto = (habitacion.vista_actual, acercamientos.actual, puerta_activa, reloj_listo, modo_cursor_reloj, tutoriales.activo)
+    if contexto != contexto_cursor:
+        cursor_gestual.reiniciar()
+        contexto_cursor = contexto
+    cursor_activo = not estado.juego_completado and (tutoriales.activo or (not puerta_activa and (not reloj_listo or modo_cursor_reloj)))
+    if cursor_activo:
+        clic = cursor_gestual.actualizar(datos, ahora)
+        if clic is not None:
+            pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=clic))
+    else:
+        cursor_gestual.reiniciar()
+    if reloj_listo and not modo_cursor_reloj and frame is not None and not tutoriales.activo:
         reloj_ui._procesar_gesto(datos)
         if reloj_ui.resuelto and estado.resolver_reloj():
             interfaz.cambiar_mensaje("El último secreto permanece detrás del TELÓN.")
 
-    if puerta_activa:
+    if puerta_activa and not tutoriales.activo:
         if acercamientos.esta_abierto() or habitacion.vista_actual != "posterior" or estado.juego_completado:
             puerta_activa = False
             secuencia_final.reiniciar()
         else:
-            gesto = gestos.reconocer_datos(frame)["gesto"] if frame is not None else "SIN MANO"
+            gesto = datos["gesto"]
             resultado = secuencia_final.actualizar(gesto, time.monotonic())
             if resultado == "primero":
                 interfaz.cambiar_mensaje("Primer gesto reconocido. Completa la secuencia (1/2).")
@@ -461,9 +536,26 @@ while ejecutando:
     inventario.dibujar(pantalla)
     orientacion.dibujar(pantalla, estado, habitacion, acercamientos, zonas_disponibles(), interfaz, inventario)
 
+    if not estado.juego_completado and not puerta_activa:
+        texto_control = ("Palma abierta 0.7 s: cambiar a cursor" if not modo_cursor_reloj else "Palma abierta 0.7 s: volver a manecillas") if reloj_listo else "Índice: mover | Puño: seleccionar"
+        etiqueta_control = fuente_prueba.render(texto_control, True, (186,255,245))
+        rect_control = etiqueta_control.get_rect(midtop=(ANCHO//2, 76 if reloj_listo else 8))
+        pygame.draw.rect(pantalla, (20,15,25), rect_control.inflate(16,8), border_radius=5)
+        pantalla.blit(etiqueta_control, rect_control)
+    if not estado.juego_completado:
+        tutoriales.dibujar(pantalla)
+    if cursor_activo:
+        cursor_gestual.dibujar(pantalla)
+    pygame.mouse.set_visible(not (cursor_activo and cursor_gestual.visible))
     posicion = pygame.mouse.get_pos()
     if estado.juego_completado:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+        pygame.display.flip()
+        reloj.tick(FPS)
+        continue
+
+    if tutoriales.activo or tutoriales.rect_ayuda.collidepoint(posicion):
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
         pygame.display.flip()
         reloj.tick(FPS)
         continue

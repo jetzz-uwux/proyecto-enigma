@@ -328,10 +328,10 @@ class RelojInteractivo:
         pantalla.blit(instruccion, (355, 43))
 
         if self.cursor_indice is not None and not self.resuelto:
-            pygame.draw.circle(pantalla, (255, 225, 130),
+            pygame.draw.circle(pantalla, (86, 244, 224),
                                (int(self.cursor_indice[0]), int(self.cursor_indice[1])),
                                9, 2)
-            pygame.draw.circle(pantalla, (255, 225, 130),
+            pygame.draw.circle(pantalla, (86, 244, 224),
                                (int(self.cursor_indice[0]), int(self.cursor_indice[1])),
                                3)
 
